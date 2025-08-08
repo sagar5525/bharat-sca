@@ -68,7 +68,7 @@ Vendor Risk Assessment: Evaluate the health and risk profile of third-party soft
 
 **Getting Started**
 Clone this repository.
-Install dependencies: pip install requests beautifulsoup4 toml
-Run the scanner: python dependency_radar.py --audit --dir /path/to/your/project --output report.html
+Install dependencies: pip install requests beautifulsoup4 toml, pip install -r requirements.txt
+Run the scanner: python bharat-sca-1.0.py --audit --dir /path/to/your/project --output report.html
 Explore the generated report.html to see your dependency risks!
 Dive in, and take control of your software supply chain risks today!
