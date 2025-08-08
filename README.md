@@ -67,8 +67,13 @@ License Audits: Easily audit projects for license compliance. The SBOM and licen
 Vendor Risk Assessment: Evaluate the health and risk profile of third-party software components used by vendors or partners.
 
 **Getting Started**
+
 Clone this repository.
+
 Install dependencies: pip install requests beautifulsoup4 toml, pip install -r requirements.txt
+
 Run the scanner: python bharat-sca-1.0.py --audit --dir /path/to/your/project --output report.html
+
 Explore the generated report.html to see your dependency risks!
+
 Dive in, and take control of your software supply chain risks today!
