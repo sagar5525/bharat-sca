@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Dependency License & Risk Radar
-CLI tool that combines security, legal, and maintenance risk analysis
+Dependency License & Risk Radar (Bharat-SCA)
+CLI tool that combines security, legal, and maintenance risk analysis.
+Supports npm, PyPI, Maven, Gradle, and Go.
 """
 import json
 import sys
@@ -10,12 +11,13 @@ import subprocess
 import requests
 import argparse
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional, Tuple
 import toml
+import xml.etree.ElementTree as ET
 # Import BeautifulSoup for web scraping
 from bs4 import BeautifulSoup
 import re
-import uuid
+import uuid # For SBOM UUID
 
 class DependencyRadar:
     def __init__(self, nvd_api_key: Optional[str] = None):
@@ -42,7 +44,8 @@ class DependencyRadar:
                         deps.append({
                             'name': name,
                             'version': version,
-                            'type': 'npm'
+                            'type': 'npm',
+                            'source_file': filepath # Add source file path
                         })
             return deps
         except Exception as e:
@@ -69,7 +72,8 @@ class DependencyRadar:
                         deps.append({
                             'name': name.strip(),
                             'version': version.strip(),
-                            'type': 'pypi'
+                            'type': 'pypi',
+                            'source_file': filepath # Add source file path
                         })
             return deps
         except Exception as e:
@@ -96,7 +100,8 @@ class DependencyRadar:
                 deps.append({
                     'name': name.strip(),
                     'version': version.strip(),
-                    'type': 'pypi'
+                    'type': 'pypi',
+                    'source_file': filepath # Add source file path
                 })
             # Handle optional dependencies (extras)
             optional_deps = data.get('project', {}).get('optional-dependencies', {})
@@ -114,12 +119,162 @@ class DependencyRadar:
                         'name': name.strip(),
                         'version': version.strip(),
                         'type': 'pypi',
-                        'extra': extra_name
+                        'extra': extra_name,
+                        'source_file': filepath # Add source file path
                     })
             return deps
         except Exception as e:
             print(f"Error parsing {filepath}: {e}")
             return []
+
+    def parse_pom_xml(self, filepath: str) -> List[Dict[str, str]]:
+        """Parse Maven pom.xml dependencies (direct dependencies only)"""
+        deps = []
+        try:
+            tree = ET.parse(filepath)
+            root = tree.getroot()
+
+            # Handle namespace if present (common in pom.xml)
+            namespace = {'mvn': 'http://maven.apache.org/POM/4.0.0'}
+            ns = namespace if root.tag.startswith('{') else {}
+
+            dependencies = root.find('mvn:dependencies', ns)
+            if dependencies is not None:
+                for dep in dependencies.findall('mvn:dependency', ns):
+                    group_id_elem = dep.find('mvn:groupId', ns)
+                    artifact_id_elem = dep.find('mvn:artifactId', ns)
+                    version_elem = dep.find('mvn:version', ns)
+
+                    if group_id_elem is not None and artifact_id_elem is not None:
+                        group_id = group_id_elem.text
+                        artifact_id = artifact_id_elem.text
+                        # Combine group_id and artifact_id for Maven package name convention used by OSV
+                        name = f"{group_id}:{artifact_id}"
+                        version = version_elem.text if version_elem is not None else "latest"
+                        deps.append({
+                            'name': name,
+                            'version': version,
+                            'type': 'maven',
+                            'source_file': filepath # Add source file path
+                        })
+            return deps
+        except ET.ParseError as e:
+            print(f"Error parsing XML in {filepath}: {e}")
+            return deps
+        except Exception as e:
+            print(f"Error parsing {filepath}: {e}")
+            return deps
+
+    def parse_build_gradle(self, filepath: str) -> List[Dict[str, str]]:
+         """Parse basic Groovy build.gradle dependencies (direct dependencies only, simple format)"""
+         # Note: This is a very basic parser and will not handle complex Gradle files with plugins, variables, etc.
+         deps = []
+         try:
+             with open(filepath, 'r') as f:
+                 content = f.read()
+
+             # Very basic regex to find 'implementation' or 'compile' dependencies
+             # Matches lines like: implementation 'group:name:version'
+             # or compile "group:name:version"
+             dep_pattern = re.compile(
+                 r"(implementation|api|compile|runtimeOnly)\s+['\"]([^:'\"]+):([^:'\"]+):([^:'\"]+)['\"]",
+                 re.MULTILINE
+             )
+             matches = dep_pattern.findall(content)
+             for match in matches:
+                 # match[1] = group, match[2] = artifact, match[3] = version
+                 name = f"{match[1]}:{match[2]}"
+                 version = match[3]
+                 # Gradle uses 'gradle' type for OSV, though 'maven' might also work depending on source
+                 deps.append({
+                     'name': name,
+                     'version': version,
+                     'type': 'gradle', # Or 'maven'?
+                     'source_file': filepath # Add source file path
+                 })
+             return deps
+         except Exception as e:
+             print(f"Error parsing {filepath}: {e}")
+             return deps
+
+    def parse_go_mod(self, filepath: str) -> List[Dict[str, str]]:
+        """Parse Go go.mod dependencies (direct dependencies only)"""
+        deps = []
+        try:
+            with open(filepath, 'r') as f:
+                lines = f.readlines()
+
+            # Find the require section
+            in_require = False
+            for line in lines:
+                line = line.strip()
+                if line == "require (":
+                    in_require = True
+                    continue
+                elif line == ")" and in_require:
+                    in_require = False
+                    continue
+
+                if in_require and line:
+                    # Split the line: module/path version
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        name = parts[0]
+                        version = parts[1]
+                        deps.append({
+                            'name': name,
+                            'version': version,
+                            'type': 'go',
+                            'source_file': filepath # Add source file path
+                        })
+                elif line.startswith("require ") and not line.endswith("("):
+                     # Handle single line require: require module/path v1.2.3
+                     parts = line.split()
+                     if len(parts) >= 3:
+                         name = parts[1]
+                         version = parts[2]
+                         deps.append({
+                             'name': name,
+                             'version': version,
+                             'type': 'go',
+                             'source_file': filepath # Add source file path
+                         })
+            return deps
+        except Exception as e:
+            print(f"Error parsing {filepath}: {e}")
+            return deps
+
+    def parse_go_sum(self, filepath: str) -> List[Dict[str, str]]:
+        """Parse Go go.sum to get ALL modules and versions (including transitive)"""
+        deps = []
+        try:
+            with open(filepath, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        # Format: module/path version/go.mod-hash
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            name_version = parts[0] + " " + parts[1]
+                            # Split name and version
+                            mod_parts = parts[1].rsplit('-', 1) # Split on last '-'
+                            if len(mod_parts) == 2 and mod_parts[1].startswith('go'):
+                                # Handle cases like v1.2.3-go.mod
+                                version = mod_parts[0]
+                            else:
+                                # Handle standard cases like v1.2.3
+                                version = parts[1]
+
+                            deps.append({
+                                'name': parts[0],
+                                'version': version,
+                                'type': 'go',
+                                'source_file': filepath # Add source file path (go.sum)
+                            })
+            return deps
+        except Exception as e:
+            print(f"Error parsing {filepath}: {e}")
+            return deps
 
     def get_osv_vulnerabilities(self, package_name: str, version: str, package_type: str) -> List[Dict]:
         """Query OSV database for vulnerabilities"""
@@ -130,7 +285,8 @@ class DependencyRadar:
             ecosystem_map = {
                 'npm': 'npm',
                 'pypi': 'PyPI',
-                'maven': 'Maven',
+                'maven': 'Maven', # Maven for pom.xml
+                'gradle': 'Maven', # Gradle often resolves to Maven ecosystem in OSV
                 'go': 'Go'
             }
             ecosystem = ecosystem_map.get(package_type, package_type)
@@ -212,7 +368,7 @@ class DependencyRadar:
         try:
             url = f"https://nvd.nist.gov/vuln/detail/{cve_id}"
             # Add a User-Agent header, as some sites block requests without it
-            headers = {'User-Agent': 'DependencyRadar/1.0'}
+            headers = {'User-Agent': 'Bharat-SCA/1.0'}
             response = requests.get(url, timeout=15, headers=headers)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
@@ -379,6 +535,7 @@ class DependencyRadar:
                 info = self.get_pypi_package_info(package_name)
                 if info and 'info' in info and 'version' in info['info']:
                     return info['info']['version']
+            # TODO: Implement for Maven and Go
             return None
         except Exception as e:
             print(f"Error fetching latest version for {package_name} ({package_type}): {e}")
@@ -395,7 +552,7 @@ class DependencyRadar:
         }
         try:
             url = f"https://github.com/advisories/{ghsa_id}"
-            headers = {'User-Agent': 'DependencyRadar/1.0'} # Good practice for web requests
+            headers = {'User-Agent': 'Bharat-SCA/1.0'} # Good practice for web requests
             response = requests.get(url, timeout=15, headers=headers)
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
@@ -438,10 +595,10 @@ class DependencyRadar:
                 'warning_licenses': [],
                 'violation_details': [] # Added for explicit violation reporting
             }
-        
+
         high_risk = [lic for lic in licenses if lic in self.risky_licenses]
         warning_risk = [lic for lic in licenses if lic in self.warning_licenses]
-        
+
         violation_details = []
         if high_risk:
             risk_level = 'high'
@@ -452,7 +609,7 @@ class DependencyRadar:
         else:
             risk_level = 'low'
             violation_details = ["License is permissive or compatible with most use cases."]
-        
+
         return {
             'risk_level': risk_level,
             'licenses': licenses,
@@ -717,7 +874,7 @@ class DependencyRadar:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dependency Risk Report</title>
+    <title>Bharat-SCA Dependency Risk Report</title>
     <style>
         :root {{
             --primary: #007bff;
@@ -1007,12 +1164,19 @@ class DependencyRadar:
             overflow-x: auto;
             margin-top: 10px;
         }}
+        /* Source file styling */
+        .source-file {{
+            font-size: 0.8rem;
+            color: #666;
+            font-family: monospace; /* Monospace for file paths */
+            word-break: break-all; /* Break long paths */
+        }}
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Dependency Risk Report</h1>
+            <h1>Bharat-SCA Dependency Risk Report</h1>
             <div class="subtitle">Comprehensive Security, License & Maintenance Analysis</div>
             <div class="timestamp">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
         </header>
@@ -1055,6 +1219,9 @@ class DependencyRadar:
                     <option value="all">All</option>
                     <option value="npm">npm</option>
                     <option value="pypi">PyPI</option>
+                    <option value="maven">Maven</option>
+                    <option value="gradle">Gradle</option>
+                    <option value="go">Go</option>
                 </select>
             </div>
             <div class="table-container">
@@ -1063,8 +1230,9 @@ class DependencyRadar:
                     <tr>
                         <th>Package</th>
                         <th>Version</th>
-                        <th>Latest Version Available</th> <!-- NEW COLUMN -->
+                        <th>Latest Version Available</th>
                         <th>Type</th>
+                        <th>Source File</th> <!-- NEW COLUMN -->
                         <th>Risk Score</th>
                         <th>License Risk</th>
                         <th>
@@ -1120,6 +1288,8 @@ class DependencyRadar:
             epss_display = f"{highest_epss:.4f}" if highest_epss is not None else "N/A"
             # --- NEW: Get Latest Version ---
             latest_version = dep.get('latest_version', 'N/A')
+            # --- NEW: Get Source File ---
+            source_file = dep.get('source_file', 'N/A')
             html_content += f"""
                     <tr data-risk="{risk_text.lower()}" data-type="{dep['type']}">
                         <td>
@@ -1128,10 +1298,13 @@ class DependencyRadar:
                         <td>
                             <div class="package-version">{dep['version']}</div>
                         </td>
-                        <td> <!-- NEW COLUMN DATA -->
+                        <td>
                             <div class="package-version">{latest_version}</div>
                         </td>
                         <td>{dep['type']}</td>
+                        <td> <!-- NEW COLUMN DATA -->
+                            <div class="source-file">{source_file}</div>
+                        </td>
                         <td>
                             <span class="risk-badge {risk_badge_class}" style="background-color: {risk_color}20; color: {risk_color};">
                                 {dep['risk_score']}
@@ -1177,6 +1350,9 @@ class DependencyRadar:
                     <option value="all">All</option>
                     <option value="npm">npm</option>
                     <option value="pypi">PyPI</option>
+                    <option value="maven">Maven</option>
+                    <option value="gradle">Gradle</option>
+                    <option value="go">Go</option>
                 </select>
             </div>
             <div class="table-container">
@@ -1184,6 +1360,8 @@ class DependencyRadar:
                 <thead>
                     <tr>
                         <th>Package</th>
+                        <th>Version</th>
+                        <th>Source File</th> <!-- NEW COLUMN -->
                         <th>Vulnerability ID</th>
                         <th>CVE ID</th>
                         <th>Severity</th>
@@ -1201,6 +1379,7 @@ class DependencyRadar:
                 vuln_data = {
                     'package': dep['name'],
                     'version': dep['version'],
+                    'source_file': dep.get('source_file', 'N/A'), # Add source file
                     'vuln_id': vuln.get('id', 'Unknown'),
                     'cve_id': vuln.get('cve_id', 'N/A'),
                     'severity': vuln.get('severity', 'N/A'),
@@ -1232,11 +1411,18 @@ class DependencyRadar:
             cvss_color = self.get_cvss_color(vuln['cvss'])
             epss_color = self.get_epss_color(vuln['epss'])
             epss_display = f"{vuln['epss']:.4f}" if vuln['epss'] is not None else "N/A"
+            # --- NEW: Get Source File ---
+            source_file = vuln.get('source_file', 'N/A')
             html_content += f"""
                     <tr data-severity="{vuln['severity_text']}" data-package-type="{vuln['package_type']}">
                         <td>
                             <div class="package-name">{vuln['package']}</div>
+                        </td>
+                        <td>
                             <div class="package-version">{vuln['version']}</div>
+                        </td>
+                        <td> <!-- NEW COLUMN DATA -->
+                            <div class="source-file">{source_file}</div>
                         </td>
                         <td>
                             <a href="{vuln_link}" target="_blank" class="vuln-id">
@@ -1286,6 +1472,9 @@ class DependencyRadar:
                     <option value="all">All</option>
                     <option value="npm">npm</option>
                     <option value="pypi">PyPI</option>
+                    <option value="maven">Maven</option>
+                    <option value="gradle">Gradle</option>
+                    <option value="go">Go</option>
                 </select>
             </div>
             <div class="table-container">
@@ -1295,6 +1484,7 @@ class DependencyRadar:
                         <th>Package</th>
                         <th>Version</th>
                         <th>Type</th>
+                        <th>Source File</th> <!-- NEW COLUMN -->
                         <th>License Risk</th>
                         <th>Detected Licenses</th>
                         <th>Violation Details</th>
@@ -1312,11 +1502,12 @@ class DependencyRadar:
                     'package': dep['name'],
                     'version': dep['version'],
                     'type': dep['type'],
+                    'source_file': dep.get('source_file', 'N/A'), # Add source file
                     'risk_level': risk_level,
                     'licenses': ', '.join(license_info.get('licenses', [])),
                     'violation_details': '; '.join(license_info.get('violation_details', []))
                 })
-        
+
         for violation in license_violations:
             # License risk badge
             if violation['risk_level'] == 'high':
@@ -1331,7 +1522,7 @@ class DependencyRadar:
                 license_badge_class = 'risk-low'
                 license_text = 'Low'
                 license_color = '#28a745'
-            
+
             html_content += f"""
                     <tr data-license-risk="{violation['risk_level']}" data-type="{violation['type']}">
                         <td>
@@ -1341,6 +1532,9 @@ class DependencyRadar:
                             <div class="package-version">{violation['version']}</div>
                         </td>
                         <td>{violation['type']}</td>
+                        <td> <!-- NEW COLUMN DATA -->
+                            <div class="source-file">{violation['source_file']}</div>
+                        </td>
                         <td>
                             <span class="risk-badge {license_badge_class}" style="background-color: {license_color}20; color: {license_color};">
                                 {license_text}
@@ -1389,18 +1583,20 @@ class DependencyRadar:
         html_content += """
         <script>
         // Generic filter function
-        function setupTableFilter(tableId, searchInputId, riskFilterId, typeFilterId, severityFilterId) {
+        function setupTableFilter(tableId, searchInputId, riskFilterId, typeFilterId, severityFilterId, licenseRiskFilterId) {
             const table = document.getElementById(tableId);
             const searchInput = document.getElementById(searchInputId);
             const riskFilter = document.getElementById(riskFilterId);
             const typeFilter = document.getElementById(typeFilterId);
             const severityFilter = document.getElementById(severityFilterId); // Optional
+            const licenseRiskFilter = document.getElementById(licenseRiskFilterId); // Optional
 
             function filterTable() {
                 const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
                 const riskValue = riskFilter ? riskFilter.value : 'all';
                 const typeValue = typeFilter ? typeFilter.value : 'all';
                 const severityValue = severityFilter ? severityFilter.value : 'all';
+                const licenseRiskValue = licenseRiskFilter ? licenseRiskFilter.value : 'all';
 
                 const rows = table.querySelectorAll('tbody tr');
                 rows.forEach(row => {
@@ -1412,16 +1608,17 @@ class DependencyRadar:
                     const rowLicenseRisk = row.getAttribute('data-license-risk') || '';
                     const rowPackageType = row.getAttribute('data-package-type') || '';
 
-                    const matchesSearch = searchTerm === '' || 
-                                          packageName.includes(searchTerm) || 
+                    const matchesSearch = searchTerm === '' ||
+                                          packageName.includes(searchTerm) ||
                                           packageVersion.includes(searchTerm) ||
-                                          (row.cells[2] && row.cells[2].textContent.toLowerCase().includes(searchTerm)); // CVE ID in vuln table
+                                          (row.cells[3] && row.cells[3].textContent.toLowerCase().includes(searchTerm)); // CVE ID or Source File in vuln table
 
                     const matchesRisk = riskValue === 'all' || rowRisk === riskValue || rowLicenseRisk === riskValue;
                     const matchesType = typeValue === 'all' || rowType === typeValue || rowPackageType === typeValue;
                     const matchesSeverity = severityValue === 'all' || rowSeverity === severityValue;
+                    const matchesLicenseRisk = licenseRiskValue === 'all' || rowLicenseRisk === licenseRiskValue;
 
-                    if (matchesSearch && matchesRisk && matchesType && matchesSeverity) {
+                    if (matchesSearch && matchesRisk && matchesType && matchesSeverity && matchesLicenseRisk) {
                         row.style.display = '';
                     } else {
                         row.style.display = 'none';
@@ -1433,20 +1630,21 @@ class DependencyRadar:
             if (riskFilter) riskFilter.addEventListener('change', filterTable);
             if (typeFilter) typeFilter.addEventListener('change', filterTable);
             if (severityFilter) severityFilter.addEventListener('change', filterTable);
+            if (licenseRiskFilter) licenseRiskFilter.addEventListener('change', filterTable);
         }
 
         // Setup filters for each table after the page loads
         document.addEventListener('DOMContentLoaded', function() {
-            setupTableFilter('all-deps-table', 'all-deps-search', 'all-deps-risk-filter', 'all-deps-type-filter');
-            setupTableFilter('vuln-details-table', 'vuln-details-search', null, 'vuln-details-type-filter', 'vuln-details-severity-filter');
-            setupTableFilter('license-violations-table', 'license-violations-search', 'license-violations-risk-filter', 'license-violations-type-filter');
+            setupTableFilter('all-deps-table', 'all-deps-search', 'all-deps-risk-filter', 'all-deps-type-filter', null, null);
+            setupTableFilter('vuln-details-table', 'vuln-details-search', null, 'vuln-details-type-filter', 'vuln-details-severity-filter', null);
+            setupTableFilter('license-violations-table', 'license-violations-search', null, 'license-violations-type-filter', null, 'license-violations-risk-filter');
         });
         </script>
         """
         # Footer
         html_content += f"""
         <div class="footer">
-            <p>Dependency License & Risk Radar Report</p>
+            <p>Bharat-SCA Dependency Risk Report</p>
             <p>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
             <p><small>Data sources: OSV, First.org EPSS, npm, PyPI, GitHub Advisories, NVD</small></p>
         </div>
@@ -1460,7 +1658,7 @@ class DependencyRadar:
     def generate_markdown_report(self, results: List[Dict], output_file: str):
         """Generate markdown report with enhanced vulnerability details"""
         with open(output_file, 'w') as f:
-            f.write("# Dependency Risk Report\n")
+            f.write("# Bharat-SCA Dependency Risk Report\n")
             f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             # Summary
             total_deps = len(results)
@@ -1475,9 +1673,9 @@ class DependencyRadar:
             # --- REMOVED: High risk dependencies section ---
             # All dependencies table
             f.write("## All Dependencies\n")
-            # --- MODIFIED: Updated column headers to include Latest Version ---
-            f.write("| Package | Version | Latest Version Available | Type | Risk Score | License Risk | Vulns | Highest EPSS | Last Update |\n")
-            f.write("|---------|---------|--------------------------|------|------------|--------------|-------|--------------|-------------|\n")
+            # --- MODIFIED: Updated column headers to include Latest Version and Source File ---
+            f.write("| Package | Version | Latest Version Available | Type | Source File | Risk Score | License Risk | Vulns | Highest EPSS | Last Update |\n")
+            f.write("|---------|---------|--------------------------|------|-------------|------------|--------------|-------|--------------|-------------|\n")
             for dep in results:
                 vuln_count = len(dep['vulnerabilities'])
                 license_risk = dep['license_info'].get('risk_level', 'unknown')
@@ -1491,26 +1689,28 @@ class DependencyRadar:
                         if highest_epss is None or epss > highest_epss:
                             highest_epss = epss
                 epss_display = f"{highest_epss:.4f}" if highest_epss is not None else "N/A"
-                # --- NEW: Get Latest Version ---
+                # --- NEW: Get Latest Version and Source File ---
                 latest_version = dep.get('latest_version', 'N/A')
-                f.write(f"| {dep['name']} | {dep['version']} | {latest_version} | {dep['type']} | {dep['risk_score']} | {license_risk} | {vuln_count} | {epss_display} | {days_str} |\n")
-            
+                source_file = dep.get('source_file', 'N/A')
+                f.write(f"| {dep['name']} | {dep['version']} | {latest_version} | {dep['type']} | {source_file} | {dep['risk_score']} | {license_risk} | {vuln_count} | {epss_display} | {days_str} |\n")
+
             # License Violation Details Section
             f.write("\n## ⚖️ License Violation Details\n")
-            f.write("| Package | Version | Type | License Risk | Detected Licenses | Violation Details |\n")
-            f.write("|---------|---------|------|--------------|-------------------|-------------------|\n")
+            f.write("| Package | Version | Type | Source File | License Risk | Detected Licenses | Violation Details |\n")
+            f.write("|---------|---------|------|-------------|--------------|-------------------|-------------------|\n")
             for dep in results:
                 license_info = dep['license_info']
                 risk_level = license_info.get('risk_level', 'unknown')
                 if risk_level in ['high', 'warning']:
                     licenses_str = ', '.join(license_info.get('licenses', []))
                     violations_str = '; '.join(license_info.get('violation_details', []))
-                    f.write(f"| {dep['name']} | {dep['version']} | {dep['type']} | {risk_level} | {licenses_str} | {violations_str} |\n")
+                    source_file = dep.get('source_file', 'N/A')
+                    f.write(f"| {dep['name']} | {dep['version']} | {dep['type']} | {source_file} | {risk_level} | {licenses_str} | {violations_str} |\n")
 
             # Vulnerability Details Section
             f.write("\n## 🔍 Vulnerability Details\n")
-            f.write("| Package | Vulnerability | CVE ID | Severity | CVSS | EPSS | Details |\n")
-            f.write("|---------|---------------|--------|----------|------|------|---------|\n")
+            f.write("| Package | Version | Source File | Vulnerability | CVE ID | Severity | CVSS | EPSS | Details |\n")
+            f.write("|---------|---------|-------------|---------------|--------|----------|------|------|---------|\n")
             # Collect all vulnerabilities
             all_vulns = []
             for dep in results:
@@ -1518,6 +1718,7 @@ class DependencyRadar:
                     vuln_data = {
                         'package': dep['name'],
                         'version': dep['version'],
+                        'source_file': dep.get('source_file', 'N/A'), # Add source file
                         'vuln_id': vuln.get('id', 'Unknown'),
                         'cve_id': vuln.get('cve_id', 'N/A'),
                         'severity': vuln.get('severity', 'N/A'),
@@ -1534,7 +1735,8 @@ class DependencyRadar:
                 vuln_link = self.get_vulnerability_link(vuln['vuln_id'])
                 epss_display = f"{vuln['epss']:.4f}" if vuln['epss'] is not None else "N/A"
                 summary = vuln['summary'][:80] + "..." if len(vuln['summary']) > 80 else vuln['summary']
-                f.write(f"| {vuln['package']} ({vuln['version']}) | [{vuln['vuln_id']}]({vuln_link}) | {vuln['cve_id']} | {vuln['severity']} | {vuln['cvss']} | {epss_display} | {summary} |\n")
+                source_file = vuln.get('source_file', 'N/A')
+                f.write(f"| {vuln['package']} | {vuln['version']} | {source_file} | [{vuln['vuln_id']}]({vuln_link}) | {vuln['cve_id']} | {vuln['severity']} | {vuln['cvss']} | {epss_display} | {summary} |\n")
 
     def generate_json_output(self, results: List[Dict], output_file: str):
         """Generate JSON output with enhanced vulnerability data"""
@@ -1550,8 +1752,8 @@ class DependencyRadar:
     def generate_spdx_sbom(self, results: List[Dict], output_file: str):
         """Generate SBOM in SPDX format"""
         # SPDX Document Creation Info
-        document_name = f"DependencyRadar-SBOM-{datetime.now().strftime('%Y-%m-%d')}"
-        document_namespace = f"https://example.com/spdxdocs/{uuid.uuid4()}"
+        document_name = f"Bharat-SCA-SBOM-{datetime.now().strftime('%Y-%m-%d')}"
+        document_namespace = f"https://bharat-sca.example.com/spdxdocs/{uuid.uuid4()}"
         created_timestamp = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
 
         spdx_data = {
@@ -1561,7 +1763,7 @@ class DependencyRadar:
             "name": document_name,
             "documentNamespace": document_namespace,
             "creationInfo": {
-                "creators": ["Tool: DependencyRadar"],
+                "creators": ["Tool: Bharat-SCA"],
                 "created": created_timestamp
             },
             "packages": [],
@@ -1571,7 +1773,7 @@ class DependencyRadar:
         # Add packages and their relationships
         for i, dep in enumerate(results):
             package_spdx_id = f"SPDXRef-Package-{i+1}"
-            
+
             # Extract license expressions
             licenses = dep['license_info'].get('licenses', [])
             if licenses:
@@ -1580,7 +1782,7 @@ class DependencyRadar:
                 license_concluded = " OR ".join(licenses)
             else:
                 license_concluded = "NOASSERTION"
-            
+
             # Create package entry
             package_entry = {
                 "name": dep['name'],
@@ -1598,6 +1800,11 @@ class DependencyRadar:
                     }
                 ]
             }
+            # Add source file if available
+            source_file = dep.get('source_file')
+            if source_file:
+                 package_entry["comment"] = f"Declared in: {source_file}"
+
             spdx_data["packages"].append(package_entry)
 
             # Add vulnerabilities as relationships and external references if needed
@@ -1608,7 +1815,10 @@ class DependencyRadar:
             if vuln_ids:
                 # Add vulnerabilities to the package description
                 vuln_list_str = ", ".join(vuln_ids)
-                package_entry["comment"] = f"Identified Vulnerabilities: {vuln_list_str}"
+                if "comment" in package_entry:
+                    package_entry["comment"] += f"; Identified Vulnerabilities: {vuln_list_str}"
+                else:
+                    package_entry["comment"] = f"Identified Vulnerabilities: {vuln_list_str}"
 
         # Write SPDX JSON to file
         with open(output_file, 'w') as f:
@@ -1619,7 +1829,10 @@ class DependencyRadar:
         """Generate a Package URL (purl) for a dependency"""
         type_map = {
             'npm': 'npm',
-            'pypi': 'pypi'
+            'pypi': 'pypi',
+            'maven': 'maven', # Assuming maven group:artifact format
+            'gradle': 'maven', # Gradle often resolves to Maven
+            'go': 'golang'
             # Add more mappings as needed
         }
         purl_type = type_map.get(package_type, package_type)
@@ -1631,10 +1844,15 @@ class DependencyRadar:
         results = []
         # Find dependency files
         dep_files = []
+        transitive_dep_files = [] # To store files for transitive deps
         for root, dirs, files in os.walk(directory):
             for file in files:
-                if file in ['package.json', 'requirements.txt', 'pyproject.toml']:
+                if file in ['package.json', 'requirements.txt', 'pyproject.toml', 'pom.xml', 'build.gradle', 'go.mod']:
                     dep_files.append(os.path.join(root, file))
+                elif file == 'go.sum': # Special handling for Go transitive deps
+                     transitive_dep_files.append(os.path.join(root, file))
+                # TODO: Add handling for npm lock files, pipenv lock files, poetry.lock etc. for transitive deps
+
         all_deps = []
         for file_path in dep_files:
             if file_path.endswith('package.json'):
@@ -1643,9 +1861,32 @@ class DependencyRadar:
                 all_deps.extend(self.parse_requirements_txt(file_path))
             elif file_path.endswith('pyproject.toml'):
                 all_deps.extend(self.parse_pyproject_toml(file_path))
+            elif file_path.endswith('pom.xml'):
+                all_deps.extend(self.parse_pom_xml(file_path))
+            elif file_path.endswith('build.gradle'):
+                all_deps.extend(self.parse_build_gradle(file_path))
+            elif file_path.endswith('go.mod'):
+                all_deps.extend(self.parse_go_mod(file_path))
+
+        # --- NEW: Attempt to add transitive dependencies for Go ---
+        # This is a simple approach using go.sum. A more robust way would be `go list -m all`.
+        for file_path in transitive_dep_files:
+             if file_path.endswith('go.sum'):
+                 # Parse go.sum for *all* modules
+                 transitive_deps = self.parse_go_sum(file_path)
+                 # Add transitive deps, potentially marking them
+                 for dep in transitive_deps:
+                     # Avoid duplicates if a transitive dep is also a direct dep
+                     # This is a simple check, might not be perfect
+                     is_direct = any(d['name'] == dep['name'] and d['version'] == dep['version'] for d in all_deps)
+                     if not is_direct:
+                         dep['source'] = 'transitive' # Mark as transitive
+                         all_deps.append(dep)
+                     # else: It's a direct dependency, already analyzed
+
         # Analyze each dependency
         for dep in all_deps:
-            print(f"Analyzing {dep['name']} ({dep['version']})...")
+            print(f"Analyzing {dep['name']} ({dep['version']}) [{dep['type']}]{' (Transitive)' if dep.get('source') == 'transitive' else ''}...")
             # Get vulnerabilities
             vulns = self.get_osv_vulnerabilities(dep['name'], dep['version'], dep['type'])
             # Enhance vulnerability data
@@ -1725,8 +1966,8 @@ class DependencyRadar:
             elif dep['type'] == 'pypi':
                 pkg_info = self.get_pypi_package_info(dep['name'])
             else:
-                pkg_info = {}
-            # Extract licenses
+                pkg_info = {} # Placeholder for other ecosystems
+            # Extract licenses (basic implementation)
             licenses = []
             if dep['type'] == 'npm' and 'license' in pkg_info:
                 license_field = pkg_info['license']
@@ -1739,6 +1980,7 @@ class DependencyRadar:
                 if license_str:
                     # PyPI license field can be complex, often just a string name
                     licenses = [license_str]
+            # TODO: Extract licenses for Maven and Go if possible (might require parsing POMs or using APIs)
             # Analyze license risk
             license_info = self.analyze_license_risk(licenses)
             # Analyze maintenance
@@ -1756,6 +1998,7 @@ class DependencyRadar:
                 'name': dep['name'],
                 'version': dep['version'],
                 'type': dep['type'],
+                'source_file': dep.get('source_file', 'N/A'), # Add source file path
                 'vulnerabilities': enhanced_vulns, # Pass full enhanced vuln object
                 'license_info': license_info,
                 'maintenance_info': maintenance_info,
@@ -1763,12 +2006,16 @@ class DependencyRadar:
                 'risk_score': risk_score,
                 'latest_version': latest_version # Add latest version to the result
             }
+            # Add transitive marker if present
+            if dep.get('source') == 'transitive':
+                result['source'] = 'transitive'
+
             results.append(result)
         return results
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Dependency License & Risk Radar',
+        description='Bharat-SCA: Dependency License & Risk Radar',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
