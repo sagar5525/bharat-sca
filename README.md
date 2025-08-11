@@ -100,4 +100,4 @@ Dive in, and take control of your software supply chain risks today!
 
 For Queries / Feedback write to srahalkar@proton.me
 
-If you find this tool useful, give a shout out on [LinkedIn]([url](https://www.linkedin.com/in/sagarrahalkar/))
+If you find this tool useful, give a shout out on LinkedIn - https://www.linkedin.com/in/sagarrahalkar/ 
