@@ -8,11 +8,16 @@ Tired of hidden landmines in your open-source dependencies? What if you could in
 
 **What is this tool, and why should I care?**
 
-This isn't just another vulnerability scanner that dumps a list of CVEs. It's a sophisticated analysis engine designed to answer the deeper questions:
+This isn't just another vulnerability scanner that dumps a list of CVEs. 
+
+It's a sophisticated analysis engine designed to answer the deeper questions:
 
 -"Is this vulnerable package a real threat to my application?"
+
 -"Could using this library force me to open-source my entire project?"
+
 -"Is this critical dependency slowly being abandoned?"
+
 By combining data from multiple authoritative sources (OSV, NVD, First.org EPSS, npm, PyPI) and applying intelligent risk scoring, this tool gives you a single, prioritized view of your dependency risks.
 
 
