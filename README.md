@@ -22,7 +22,9 @@ By combining data from multiple authoritative sources (OSV, NVD, First.org EPSS,
 
 Forget simple vulnerability lists. Our core feature is a calculated Risk Score (0-100) for each dependency, combining:
 
-**Security Vulnerabilities:** CVSS scores tell you severity, but we go further by incorporating EPSS (Exploit Prediction Scoring System). This tells you the probability a vulnerability will be exploited in the wild. A high CVSS score is bad, but a high EPSS score means it's likely to be attacked now.
+**Security Vulnerabilities:** 
+
+CVSS scores tell you severity, but we go further by incorporating EPSS (Exploit Prediction Scoring System). This tells you the probability a vulnerability will be exploited in the wild. A high CVSS score is bad, but a high EPSS score means it's likely to be attacked now.
 License Compliance & Legal Risk: Automatically detects licenses and flags permissive (MIT, Apache-2.0), weak copyleft (MPL-2.0), and strong copyleft (GPL-3.0, AGPL-3.0) licenses. Understand the legal implications before you integrate.
 
 **Maintenance Health:** 
@@ -89,6 +91,10 @@ Vendor Risk Assessment: Evaluate the health and risk profile of third-party soft
 Clone this repository.
 
 Install dependencies: pip install requests beautifulsoup4 toml, pip install -r requirements.txt
+
+For Queries / Feedback write to srahalkar@proton.me
+
+If you find this tool useful, give a shout out on [LinkedIn]([url](https://www.linkedin.com/in/sagarrahalkar/))
 
 Run the scanner: python bharat-sca-1.0.py --audit --dir /path/to/your/project --output report.html
 
