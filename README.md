@@ -92,12 +92,12 @@ Clone this repository.
 
 Install dependencies: pip install requests beautifulsoup4 toml, pip install -r requirements.txt
 
-For Queries / Feedback write to srahalkar@proton.me
-
-If you find this tool useful, give a shout out on [LinkedIn]([url](https://www.linkedin.com/in/sagarrahalkar/))
-
 Run the scanner: python bharat-sca-1.0.py --audit --dir /path/to/your/project --output report.html
 
 Explore the generated report.html to see your dependency risks!
 
 Dive in, and take control of your software supply chain risks today!
+
+For Queries / Feedback write to srahalkar@proton.me
+
+If you find this tool useful, give a shout out on [LinkedIn]([url](https://www.linkedin.com/in/sagarrahalkar/))
