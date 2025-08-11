@@ -1,0 +1,28 @@
+// Apply necessary plugins if needed for a full project, but not required for dependency parsing test
+// plugins {
+//     id 'java'
+// }
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Apache Commons IO (Check for vulnerabilities)
+    implementation 'commons-io:commons-io:2.6' // Version 2.6 has known issues
+
+    // Guava (Check for vulnerabilities)
+    implementation 'com.google.guava:guava:30.0-jre' // Version 30.0 has CVEs
+
+    // OkHttp (A popular HTTP client, check its vulns)
+    implementation 'com.squareup.okhttp3:okhttp:4.9.0' // Check this version
+
+    // JUnit Jupiter API for testing
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.2'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.2'
+}
+
+// Use JUnit Platform for testing
+test {
+    useJUnitPlatform()
+}
