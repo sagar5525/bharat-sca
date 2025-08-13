@@ -1,4 +1,4 @@
-**bharat-sca: Your Comprehensive Software Supply Chain Guardian**
+# bharat-sca: Your Comprehensive Software Supply Chain Guardian
 
 
 Bharat-SCA is not just another dependency scanner. It's a holistic risk intelligence platform designed to proactively identify and prioritize threats lurking within your open-source dependencies. We go beyond simple vulnerability lists to provide a unified risk score that combines security, legal, and maintenance risks, empowering you to make smarter, faster decisions.
@@ -101,6 +101,11 @@ The true power of Bharat-SCA is realized when it's automated. Here's how you can
 2. Install the required Python packages: pip install requests beautifulsoup4 toml.
 3. Run a scan: python bharat_sca.py --audit --dir /path/to/your/project --output report.html.
 4. Open report.html to see your comprehensive dependency risk analysis!
+
+
+**How to request NVD API Key**
+
+Go to https://nvd.nist.gov/developers/request-an-api-key, fill in the form and request for key.
 
 Take control of your software supply chain today with bharat-sca.
 
