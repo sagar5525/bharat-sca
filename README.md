@@ -3,7 +3,7 @@
 
 Bharat-SCA is not just another dependency scanner. It's a holistic risk intelligence platform designed to proactively identify and prioritize threats lurking within your open-source dependencies. We go beyond simple vulnerability lists to provide a unified risk score that combines security, legal, and maintenance risks, empowering you to make smarter, faster decisions.
 
-**Why bharat-sca Stands Out?**
+# 🚀 Why bharat-sca Stands Out? 
 
 In a crowded field of security tools, Bharat-SCA distinguishes itself with a unique combination of depth, intelligence, and actionable insights:
 
@@ -55,17 +55,23 @@ Generate a standardized Software Bill of Materials (SBOM) in the SPDX format. Th
 
 Designed from the ground up to be a seamless part of your CI/CD pipeline, ensuring continuous security.
 
-How Bharat-SCA Discovers and Prioritizes Vulnerabilities
+🛠 **How Bharat-SCA Discovers and Prioritizes Vulnerabilities**
+
 Bharat-SCA uses a sophisticated, multi-source approach to ensure comprehensive and accurate vulnerability discovery:
 
 Primary Source - OSV.dev: We query the Open Source Vulnerability (OSV) database, a community-driven, cross-ecosystem vulnerability source, for the most up-to-date vulnerability data.
+
 Enhanced Context - NVD & EPSS: We enrich the vulnerability data by:
+
 Fetching precise CVSS scores from the National Vulnerability Database (NVD).
+
 Integrating Exploit Prediction Scoring System (EPSS) scores to understand the real-world likelihood of exploitation.
+
 Scraping advisory details from sources like GitHub to get accurate CVE IDs and severity levels.
+
 Smart Risk Calculation: By combining the CVSS score (impact) with the EPSS score (likelihood), we can prioritize a "High" severity vulnerability with a 70% chance of being exploited over a "Critical" vulnerability with only a 1% chance, focusing your team's efforts where they are most needed.
 
-**Who Benefits From This Tool?**
+# 👥 Who Benefits From This Tool?
 
 **🛡️ Security Teams (Blue Team)**
 
@@ -90,12 +96,12 @@ Vendor Risk Assessment: Evaluate the health and risk profile of third-party soft
 
 
 
-**Integrating Bharat-SCA into Your CI/CD Pipeline**
+**🧪Integrating Bharat-SCA into Your CI/CD Pipeline**
 
 The true power of Bharat-SCA is realized when it's automated. Here's how you can integrate it into your build pipeline (e.g., GitHub Actions, GitLab CI, Jenkins) to create a robust security gate:
 
 
-**Getting Started**
+# 🏁 Getting Started
 
 1. Clone this repository.
 2. Install the required Python packages: pip install requests beautifulsoup4 toml.
@@ -103,15 +109,15 @@ The true power of Bharat-SCA is realized when it's automated. Here's how you can
 4. Open report.html to see your comprehensive dependency risk analysis!
 
 
-**How to request NVD API Key**
+🔑 **How to request NVD API Key**
 
 Go to https://nvd.nist.gov/developers/request-an-api-key, fill in the form and request for key.
 
 Take control of your software supply chain today with bharat-sca.
 
-For Queries / Feedback write to srahalkar@proton.me
+📬 **Feedback**
 
-If you find this tool useful, give a shout out on LinkedIn - https://www.linkedin.com/in/sagarrahalkar/ 
+For queries or feedback, write to: srahalkar@proton.me
 
 
 
