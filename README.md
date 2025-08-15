@@ -108,7 +108,8 @@ The true power of Bharat-SCA is realized when it's automated. Here's how you can
 3. Run a scan: python bharat_sca.py --audit --dir /path/to/your/project --output report.html.
 4. Open report.html to see your comprehensive dependency risk analysis!
 
-
+If you already have an SBOM generated out of any other SCA tool (SPDX/JSON) and looking for prioritizing the identified risks then use https://github.com/sagar5525/bharat-sca/tree/main/epss-scanner 
+ 
 🔑 **How to request NVD API Key**
 
 Go to https://nvd.nist.gov/developers/request-an-api-key, fill in the form and request for key.
