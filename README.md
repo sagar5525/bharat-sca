@@ -120,5 +120,5 @@ Take control of your software supply chain today with bharat-sca.
 
 For queries or feedback, write to: srahalkar@proton.me
 
-
+For a detailed deep dive into how SCA works and it's future, refer https://www.linkedin.com/pulse/software-composition-analysis-because-hope-works-isnt-sagar-rahalkar-fkssf/?trackingId=hlO%2BN2XLSH66Hw12u1p53A%3D%3D 
 
